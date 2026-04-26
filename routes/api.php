@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
     
     // Invoice endpoints (protected)
+    Route::post('/visits/{visitId}/invoices', [InvoiceController::class, 'createInvoiceForVisit']);
     Route::get('/visits/{visitId}/invoice', [InvoiceController::class, 'getInvoiceByVisit']);
     Route::apiResource('invoices', InvoiceController::class);
     

@@ -18,9 +18,12 @@ class InvoiceService
             ->first();
     }
 
-    public function createInvoiceForVisit(Visit $visit, array $lineItems): Invoice
+    public function createInvoiceForVisit(int $visitId, array $data): Invoice
     {
-        return DB::transaction(function () use ($visit, $lineItems) {
+        return DB::transaction(function () use ($visitId, $data) {
+            $visit = Visit::findOrFail($visitId);
+            $lineItems = $data['line_items'];
+            
             $totalAmount = collect($lineItems)->sum(function ($item) {
                 return $item['quantity'] * $item['unit_price'];
             });
