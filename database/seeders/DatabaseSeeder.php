@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             FacilitySeeder::class,
             InsuranceSeeder::class,
             PatientSeeder::class,
+            UserSeeder::class,
         ]);
     }
 }

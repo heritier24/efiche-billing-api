@@ -16,7 +16,10 @@ class Patient extends Model
         'phone',
         'date_of_birth',
         'gender',
-        'address'
+        'address',
+        'insurance_id',
+        'registration_date',
+        'status'
     ];
 
     protected $casts = [
@@ -26,6 +29,11 @@ class Patient extends Model
     public function visits()
     {
         return $this->hasMany(Visit::class);
+    }
+
+    public function insurance()
+    {
+        return $this->belongsTo(Insurance::class);
     }
 
     public function getFullNameAttribute()
