@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\VisitController;
+use App\Http\Controllers\Api\ReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,12 +40,24 @@ Route::middleware('auth:sanctum')->group(function () {
     // Invoice endpoints (protected)
     Route::post('/visits/{visitId}/invoices', [InvoiceController::class, 'createInvoiceForVisit']);
     Route::get('/visits/{visitId}/invoice', [InvoiceController::class, 'getInvoiceByVisit']);
+    Route::get('/invoices/pending', [InvoiceController::class, 'getPendingInvoices']);
     Route::apiResource('invoices', InvoiceController::class);
     
     // Payment endpoints (protected)
     Route::post('/invoices/{invoiceId}/payments', [PaymentController::class, 'processPayment']);
+    Route::get('/payments/summary', [PaymentController::class, 'getPaymentSummary']);
     Route::get('/payments/{paymentId}/status', [PaymentController::class, 'getPaymentStatus']);
+    Route::put('/payments/{paymentId}/status', [PaymentController::class, 'updateStatus']);
+    Route::delete('/payments/{paymentId}', [PaymentController::class, 'destroy']);
+    Route::post('/payments/{paymentId}/retry', [PaymentController::class, 'retryPayment']);
     Route::apiResource('payments', PaymentController::class);
+    
+    // Visit endpoints (protected)
+    Route::get('/visits', [VisitController::class, 'index']);
+    Route::post('/visits', [VisitController::class, 'store']);
+    Route::get('/visits/{id}', [VisitController::class, 'show']);
+    Route::put('/visits/{id}/status', [VisitController::class, 'updateStatus']);
+    Route::get('/visits/statistics', [VisitController::class, 'getStatistics']);
     
     // Patient endpoints (protected)
     Route::apiResource('patients', PatientController::class);
@@ -53,6 +67,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     Route::get('/dashboard/payment-stats', [DashboardController::class, 'getPaymentStats']);
     Route::get('/dashboard/top-patients', [DashboardController::class, 'getTopPayingPatients']);
+    Route::get('/dashboard/active-patients', [DashboardController::class, 'getActivePatients']);
+    
+    // Reports endpoints (protected)
+    Route::get('/reports/summary', [ReportController::class, 'getSummary']);
+    Route::get('/reports/payment-methods', [ReportController::class, 'getPaymentMethods']);
+    Route::get('/reports/revenue', [ReportController::class, 'getRevenueAnalytics']);
+    Route::get('/reports/invoices', [ReportController::class, 'getInvoiceAnalytics']);
+    Route::get('/reports/patients', [ReportController::class, 'getPatientAnalytics']);
+    Route::post('/reports/export', [ReportController::class, 'exportReport']);
+    Route::get('/reports/batch', [ReportController::class, 'getBatchReports']);
+    Route::get('/reports/realtime', [ReportController::class, 'getRealTimeUpdates']);
+    Route::post('/reports/search', [ReportController::class, 'searchReports']);
+    Route::post('/reports/schedule', [ReportController::class, 'scheduleExport']);
+    
+    // Download endpoint (public)
+    Route::get('/downloads/{fileName}', [ReportController::class, 'downloadExport']);
+    Route::get('/dashboard/revenue-summary', [DashboardController::class, 'getRevenueSummary']);
+    Route::get('/dashboard/recent-invoices', [DashboardController::class, 'getRecentInvoices']);
     
     // Facility insurance endpoints (protected)
     Route::get('/facilities/{facilityId}/insurances', function ($facilityId) {
@@ -66,4 +98,4 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Public webhook endpoints (no auth - external services)
-Route::post('/webhooks/efichepay', [WebhookController::class, 'handleEfichePay']);
+Route::post('/webhooks/efichepay', [WebhookController::class, 'handleEfichePay'])->name('webhooks.efichepay');
