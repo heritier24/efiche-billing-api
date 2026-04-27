@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use Database\Seeders\FacilitySeeder;
 use Database\Seeders\InsuranceSeeder;
 use Database\Seeders\PatientSeeder;
+use Database\Seeders\VisitSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,6 +16,7 @@ class DatabaseSeeder extends Seeder
             FacilitySeeder::class,
             InsuranceSeeder::class,
             PatientSeeder::class,
+            VisitSeeder::class,
             UserSeeder::class,
         ]);
     }

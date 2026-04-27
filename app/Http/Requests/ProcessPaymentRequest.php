@@ -17,7 +17,7 @@ class ProcessPaymentRequest extends FormRequest
         return [
             'amount' => 'required|numeric|regex:/^\d{1,8}(\.\d{1,2})?$/',
             'method' => ['required', Rule::in(['cash', 'mobile_money', 'insurance'])],
-            'phone_number' => 'required_if:method,mobile_money|regex:/^\+2507\d{8}$/',
+            'phone' => 'required_if:method,mobile_money|regex:/^\+2507\d{8}$/',
             'notes' => 'nullable|string|max:500'
         ];
     }
@@ -26,8 +26,8 @@ class ProcessPaymentRequest extends FormRequest
     {
         return [
             'amount.regex' => 'Amount must be a valid currency format (e.g., 10000.50)',
-            'phone_number.regex' => 'Phone number must be a valid Rwanda number (e.g., +250788123456)',
-            'phone_number.required_if' => 'Phone number is required for mobile money payments'
+            'phone.regex' => 'Phone number must be a valid Rwanda number (e.g., +250788123456)',
+            'phone.required_if' => 'Phone number is required for mobile money payments'
         ];
     }
 }

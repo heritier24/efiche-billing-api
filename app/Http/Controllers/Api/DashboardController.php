@@ -57,4 +57,47 @@ class DashboardController extends Controller
             ], 500);
         }
     }
+
+    public function getActivePatients(): JsonResponse
+    {
+        try {
+            $activePatients = $this->dashboardService->getActivePatientsData();
+            
+            return response()->json($activePatients);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'Failed to retrieve active patients',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getRevenueSummary(): JsonResponse
+    {
+        try {
+            $revenueSummary = $this->dashboardService->getRevenueSummary();
+            
+            return response()->json($revenueSummary);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'Failed to retrieve revenue summary',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getRecentInvoices(): JsonResponse
+    {
+        try {
+            $limit = request()->get('limit', 5);
+            $recentInvoices = $this->dashboardService->getRecentInvoicesData($limit);
+            
+            return response()->json($recentInvoices);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'Failed to retrieve recent invoices',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
