@@ -46,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payment endpoints (protected)
     Route::post('/invoices/{invoiceId}/payments', [PaymentController::class, 'processPayment']);
     Route::get('/payments/summary', [PaymentController::class, 'getPaymentSummary']);
+    Route::get('/payments/revenue-trends', [PaymentController::class, 'getRevenueTrends']);
     Route::get('/payments/{paymentId}/status', [PaymentController::class, 'getPaymentStatus']);
     Route::put('/payments/{paymentId}/status', [PaymentController::class, 'updateStatus']);
     Route::delete('/payments/{paymentId}', [PaymentController::class, 'destroy']);

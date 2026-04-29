@@ -142,51 +142,131 @@ class PaymentService
         return Payment::with(['invoice.visit.patient'])->find($id);
     }
 
-    public function getPaymentSummary(): array
+    public function getPaymentSummary(?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $totalPayments = Payment::count();
-        $completedPayments = Payment::where('status', 'confirmed')->count();
-        $totalRevenue = Payment::where('status', 'confirmed')->sum('amount');
-        $pendingAmount = Payment::where('status', 'pending')->sum('amount');
+        // Build base query with date filtering
+        $baseQuery = Payment::query();
+        
+        if ($dateFrom) {
+            $baseQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        
+        if ($dateTo) {
+            $baseQuery->whereDate('created_at', '<=', $dateTo);
+        }
 
-        // Payment methods breakdown
+        // Get facility ID for security (from authenticated user)
+        $userFacilityId = auth()->user()?->facility_id;
+        
+        if ($userFacilityId) {
+            $baseQuery->whereHas('invoice.visit', function ($query) use ($userFacilityId) {
+                $query->where('facility_id', $userFacilityId);
+            });
+        }
+
+        // Core metrics
+        $totalPayments = $baseQuery->count();
+        $completedPayments = (clone $baseQuery)->where('status', 'confirmed')->count();
+        $totalRevenue = (clone $baseQuery)->where('status', 'confirmed')->sum('amount');
+        $pendingAmount = (clone $baseQuery)->where('status', 'pending')->sum('amount');
+
+        // Payment methods breakdown with totals
         $paymentMethods = ['cash', 'mobile_money', 'insurance'];
         $paymentMethodsBreakdown = [];
         
         foreach ($paymentMethods as $method) {
-            $count = Payment::where('payment_method', $method)->count();
-            $paymentMethodsBreakdown[$method] = $count;
+            $methodQuery = clone $baseQuery;
+            $count = $methodQuery->where('payment_method', $method)->count();
+            $total = $methodQuery->where('payment_method', $method)->sum('amount');
+            
+            $paymentMethodsBreakdown[$method] = [
+                'count' => $count,
+                'total' => (float) $total
+            ];
         }
 
-        // Monthly stats
-        $currentMonth = now()->startOfMonth();
-        $previousMonth = now()->subMonth()->startOfMonth();
+        // Invoice and patient metrics
+        $invoiceQuery = \App\Models\Invoice::query();
+        if ($userFacilityId) {
+            $invoiceQuery->whereHas('visit', function ($query) use ($userFacilityId) {
+                $query->where('facility_id', $userFacilityId);
+            });
+        }
         
-        $monthlyStats = [
-            'current_month' => [
-                'payments' => Payment::where('created_at', '>=', $currentMonth)->count(),
-                'revenue' => Payment::where('status', 'confirmed')
-                    ->where('created_at', '>=', $currentMonth)
-                    ->sum('amount'),
-            ],
-            'previous_month' => [
-                'payments' => Payment::where('created_at', '>=', $previousMonth)
-                    ->where('created_at', '<', $currentMonth)
-                    ->count(),
-                'revenue' => Payment::where('status', 'confirmed')
-                    ->where('created_at', '>=', $previousMonth)
-                    ->where('created_at', '<', $currentMonth)
-                    ->sum('amount'),
-            ],
-        ];
+        if ($dateFrom) {
+            $invoiceQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $invoiceQuery->whereDate('created_at', '<=', $dateTo);
+        }
+
+        $totalInvoices = $invoiceQuery->count();
+        
+        // Patient metrics
+        $patientQuery = \App\Models\Patient::query();
+        if ($userFacilityId) {
+            $patientQuery->whereHas('visits', function ($query) use ($userFacilityId) {
+                $query->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        $totalPatients = $patientQuery->count();
+        
+        // Active patients (patients with visits in date range)
+        $activePatientsQuery = \App\Models\Patient::query()
+            ->whereHas('visits', function ($query) use ($dateFrom, $dateTo, $userFacilityId) {
+                if ($userFacilityId) {
+                    $query->where('facility_id', $userFacilityId);
+                }
+                if ($dateFrom) {
+                    $query->whereDate('created_at', '>=', $dateFrom);
+                }
+                if ($dateTo) {
+                    $query->whereDate('created_at', '<=', $dateTo);
+                }
+            });
+            
+        $activePatients = $activePatientsQuery->count();
+        
+        // New patients in date range
+        $newPatientsQuery = \App\Models\Patient::query();
+        if ($userFacilityId) {
+            $newPatientsQuery->whereHas('visits', function ($query) use ($userFacilityId) {
+                $query->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        if ($dateFrom) {
+            $newPatientsQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $newPatientsQuery->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        $newPatients = $newPatientsQuery->count();
+        
+        // Growth calculations
+        $patientGrowthRate = $totalPatients > 0 ? ($newPatients / $totalPatients) * 100 : 0;
+        $patientRetentionRate = $activePatients > 0 ? (($activePatients - $newPatients) / $activePatients) * 100 : 0;
+        
+        // Revenue trends (daily data for charts)
+        $revenueTrends = $this->getRevenueTrends($dateFrom, $dateTo, $userFacilityId);
+        
+        // Growth comparison with previous period
+        $growthComparison = $this->calculateGrowthComparison($dateFrom, $dateTo, $userFacilityId);
 
         return [
-            'total_payments' => $totalPayments,
-            'completed_payments' => $completedPayments,
             'total_revenue' => (float) $totalRevenue,
-            'pending_amount' => (float) $pendingAmount,
+            'total_payments' => $totalPayments,
+            'total_invoices' => $totalInvoices,
+            'total_patients' => $totalPatients,
+            'active_patients' => $activePatients,
+            'new_patients' => $newPatients,
+            'patient_growth_rate' => round($patientGrowthRate, 2),
+            'patient_retention_rate' => round($patientRetentionRate, 2),
             'payment_methods_breakdown' => $paymentMethodsBreakdown,
-            'monthly_stats' => $monthlyStats,
+            'revenue_trends' => $revenueTrends,
+            'growth_comparison' => $growthComparison,
         ];
     }
 
@@ -327,5 +407,178 @@ class PaymentService
     private function generateTransactionReference(): string
     {
         return 'PAY-' . strtoupper(uniqid()) . '-' . time();
+    }
+
+    /**
+     * Get revenue trends for chart data
+     */
+    public function getRevenueTrends(?string $dateFrom = null, ?string $dateTo = null, ?int $userFacilityId = null, string $groupBy = 'daily'): array
+    {
+        $query = \App\Models\Payment::where('status', 'confirmed');
+        
+        if ($userFacilityId) {
+            $query->whereHas('invoice.visit', function ($subQuery) use ($userFacilityId) {
+                $subQuery->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        if ($dateFrom) {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        switch ($groupBy) {
+            case 'weekly':
+                $revenueData = $query->selectRaw('YEAR(created_at) as year, WEEK(created_at) as week, SUM(amount) as revenue')
+                    ->groupBy('year', 'week')
+                    ->orderBy('year')
+                    ->orderBy('week')
+                    ->get();
+                    
+                $trends = $revenueData->map(function ($item) {
+                    return [
+                        'period' => "Week {$item->week}",
+                        'revenue' => (float) $item->revenue
+                    ];
+                })->toArray();
+                break;
+                
+            case 'monthly':
+                $revenueData = $query->selectRaw('YEAR(created_at) as year, MONTH(created_at) as month, SUM(amount) as revenue')
+                    ->groupBy('year', 'month')
+                    ->orderBy('year')
+                    ->orderBy('month')
+                    ->get();
+                    
+                $trends = $revenueData->map(function ($item) {
+                    $monthName = \Carbon\Carbon::create($item->year, $item->month)->format('F');
+                    return [
+                        'period' => $monthName,
+                        'revenue' => (float) $item->revenue
+                    ];
+                })->toArray();
+                break;
+                
+            case 'daily':
+            default:
+                $revenueData = $query->selectRaw('DATE(created_at) as date, SUM(amount) as revenue')
+                    ->groupBy('date')
+                    ->orderBy('date')
+                    ->get();
+                    
+                $trends = $revenueData->map(function ($item) {
+                    return [
+                        'period' => $item->date,
+                        'revenue' => (float) $item->revenue
+                    ];
+                })->toArray();
+                break;
+        }
+        
+        return [
+            'trends' => $trends,
+            'labels' => array_column($trends, 'period'),
+            'data' => array_column($trends, 'revenue')
+        ];
+    }
+
+    /**
+     * Calculate growth comparison with previous period
+     */
+    private function calculateGrowthComparison(?string $dateFrom = null, ?string $dateTo = null, ?int $userFacilityId = null): array
+    {
+        // Default to last 30 days if no date range provided
+        if (!$dateFrom) {
+            $dateFrom = now()->subDays(30)->toDateString();
+        }
+        if (!$dateTo) {
+            $dateTo = now()->toDateString();
+        }
+        
+        $currentPeriodStart = \Carbon\Carbon::parse($dateFrom);
+        $currentPeriodEnd = \Carbon\Carbon::parse($dateTo);
+        $daysDiff = $currentPeriodStart->diffInDays($currentPeriodEnd);
+        
+        // Previous period (same duration)
+        $previousPeriodStart = $currentPeriodStart->copy()->subDays($daysDiff);
+        $previousPeriodEnd = $currentPeriodStart->copy()->subDay();
+        
+        // Current period metrics
+        $currentRevenue = $this->getRevenueInPeriod($dateFrom, $dateTo, $userFacilityId);
+        $currentPayments = $this->getPaymentsInPeriod($dateFrom, $dateTo, $userFacilityId);
+        $currentInvoices = $this->getInvoicesInPeriod($dateFrom, $dateTo, $userFacilityId);
+        $currentPatients = $this->getActivePatientsInPeriod($dateFrom, $dateTo, $userFacilityId);
+        
+        // Previous period metrics
+        $previousRevenue = $this->getRevenueInPeriod($previousPeriodStart->toDateString(), $previousPeriodEnd->toDateString(), $userFacilityId);
+        $previousPayments = $this->getPaymentsInPeriod($previousPeriodStart->toDateString(), $previousPeriodEnd->toDateString(), $userFacilityId);
+        $previousInvoices = $this->getInvoicesInPeriod($previousPeriodStart->toDateString(), $previousPeriodEnd->toDateString(), $userFacilityId);
+        $previousPatients = $this->getActivePatientsInPeriod($previousPeriodStart->toDateString(), $previousPeriodEnd->toDateString(), $userFacilityId);
+        
+        return [
+            'revenue_growth' => $previousRevenue > 0 ? round((($currentRevenue - $previousRevenue) / $previousRevenue) * 100, 2) : 0,
+            'payments_growth' => $previousPayments > 0 ? round((($currentPayments - $previousPayments) / $previousPayments) * 100, 2) : 0,
+            'invoices_growth' => $previousInvoices > 0 ? round((($currentInvoices - $previousInvoices) / $previousInvoices) * 100, 2) : 0,
+            'patients_growth' => $previousPatients > 0 ? round((($currentPatients - $previousPatients) / $previousPatients) * 100, 2) : 0,
+        ];
+    }
+
+    private function getRevenueInPeriod(string $dateFrom, string $dateTo, ?int $userFacilityId = null): float
+    {
+        $query = \App\Models\Payment::where('status', 'confirmed')
+            ->whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo);
+            
+        if ($userFacilityId) {
+            $query->whereHas('invoice.visit', function ($subQuery) use ($userFacilityId) {
+                $subQuery->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        return (float) $query->sum('amount');
+    }
+
+    private function getPaymentsInPeriod(string $dateFrom, string $dateTo, ?int $userFacilityId = null): int
+    {
+        $query = \App\Models\Payment::whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo);
+            
+        if ($userFacilityId) {
+            $query->whereHas('invoice.visit', function ($subQuery) use ($userFacilityId) {
+                $subQuery->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        return $query->count();
+    }
+
+    private function getInvoicesInPeriod(string $dateFrom, string $dateTo, ?int $userFacilityId = null): int
+    {
+        $query = \App\Models\Invoice::whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo);
+            
+        if ($userFacilityId) {
+            $query->whereHas('visit', function ($subQuery) use ($userFacilityId) {
+                $subQuery->where('facility_id', $userFacilityId);
+            });
+        }
+        
+        return $query->count();
+    }
+
+    private function getActivePatientsInPeriod(string $dateFrom, string $dateTo, ?int $userFacilityId = null): int
+    {
+        $query = \App\Models\Patient::whereHas('visits', function ($subQuery) use ($dateFrom, $dateTo, $userFacilityId) {
+            $subQuery->whereDate('created_at', '>=', $dateFrom)
+                     ->whereDate('created_at', '<=', $dateTo);
+                     
+            if ($userFacilityId) {
+                $subQuery->where('facility_id', $userFacilityId);
+            }
+        });
+        
+        return $query->count();
     }
 }

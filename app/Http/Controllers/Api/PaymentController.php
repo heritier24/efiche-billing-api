@@ -164,10 +164,27 @@ class PaymentController extends Controller
         }
     }
 
-    public function getPaymentSummary(): JsonResponse
+    public function getPaymentSummary(Request $request): JsonResponse
     {
         try {
-            $summary = $this->paymentService->getPaymentSummary();
+            // Validate query parameters
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Invalid query parameters',
+                    'message' => $validator->errors()->first()
+                ], 422);
+            }
+
+            $dateFrom = $request->input('date_from');
+            $dateTo = $request->input('date_to');
+            
+            $summary = $this->paymentService->getPaymentSummary($dateFrom, $dateTo);
             
             return response()->json([
                 'success' => true,
@@ -177,6 +194,44 @@ class PaymentController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve payment summary',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getRevenueTrends(Request $request): JsonResponse
+    {
+        try {
+            // Validate query parameters
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+                'group_by' => 'nullable|in:daily,weekly,monthly'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Invalid query parameters',
+                    'message' => $validator->errors()->first()
+                ], 422);
+            }
+
+            $dateFrom = $request->input('date_from');
+            $dateTo = $request->input('date_to');
+            $groupBy = $request->input('group_by', 'daily');
+            $userFacilityId = auth()->user()?->facility_id;
+            
+            $trends = $this->paymentService->getRevenueTrends($dateFrom, $dateTo, $userFacilityId, $groupBy);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $trends
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to retrieve revenue trends',
                 'message' => $e->getMessage()
             ], 500);
         }

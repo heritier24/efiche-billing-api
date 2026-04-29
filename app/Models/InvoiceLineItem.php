@@ -14,7 +14,8 @@ class InvoiceLineItem extends Model
         'item_code',
         'description',
         'quantity',
-        'unit_price'
+        'unit_price',
+        'total_price'
     ];
 
     protected $casts = [
